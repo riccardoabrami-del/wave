@@ -25,6 +25,6 @@ jobs:
 
       - name: Run BYNIGHTS script
         env:
-          INSTAGRAM_COOKIES: ${{ secrets.INSTAGRAM_COOKIES }}
+          INSTAGRAM_COOKIES: ${{ secrets.INSTAGRAM2_COOKIES }}
         run: |
           python main.py
