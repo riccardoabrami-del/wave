@@ -1,3 +1,9 @@
+print("BYNIGHTS main.py caricato")
+...
+def main():
+    print("BYNIGHTS main() avviato")
+    ...
+
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
 import os
 import json
