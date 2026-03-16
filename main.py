@@ -29,10 +29,8 @@ def carica_cookies(context):
 def chiudi_popup(page):
     """Chiude eventuali popup o dialoghi aperti su Instagram."""
     try:
-        # Tenta di chiudere popup con tasto Escape
         page.keyboard.press("Escape")
         time.sleep(0.5)
-        # Cerca bottone 'Non ora' o 'Chiudi' nei popup
         for testo in ["Non ora", "Not Now", "Chiudi", "Close", "Cancel"]:
             btn = page.locator(f"button:has-text('{testo}')").first
             if btn.is_visible():
@@ -41,6 +39,36 @@ def chiudi_popup(page):
                 break
     except Exception:
         pass
+
+
+def trova_bottoni_segui(page):
+    """
+    Restituisce una lista di locator per i bottoni 'Segui' / 'Follow'
+    usando selettori robusti e un fallback generico.
+    """
+    # Caso attuale: testo dentro un div interno
+    locator_seg = page.locator("button:has(div:has-text('Segui'))")
+    locator_follow = page.locator("button:has(div:has-text('Follow'))")
+
+    count_seg = locator_seg.count()
+    count_follow = locator_follow.count()
+    print(f"Bottoni Segui: {count_seg}, Bottoni Follow: {count_follow}")
+
+    if count_seg > 0:
+        return locator_seg.all()
+    if count_follow > 0:
+        return locator_follow.all()
+
+    # Fallback per quando il testo sparisce e resta solo l'icona:
+    # prendi i button nelle card utente dei suggeriti
+    fallback = page.locator("article button, div[role='button']")
+    count_fallback = fallback.count()
+    print(f"Bottoni fallback trovati: {count_fallback}")
+
+    if count_fallback > 0:
+        return fallback.all()
+
+    return []
 
 
 def segui_account_suggeriti(page):
@@ -61,13 +89,10 @@ def segui_account_suggeriti(page):
 
     while seguiti < MAX_FOLLOW:
         try:
-            # Chiudi eventuali popup prima di cercare i bottoni
             chiudi_popup(page)
 
-            # Cerca bottoni 'Segui' (italiano) o 'Follow' (inglese)
-            bottoni = page.locator("button", has_text="Segui").all()
-            if not bottoni:
-                bottoni = page.locator("button", has_text="Follow").all()
+            # Trova bottoni in modo robusto
+            bottoni = trova_bottoni_segui(page)
 
             if not bottoni:
                 print("Nessun bottone Segui trovato. Ricarico la pagina...")
@@ -79,39 +104,35 @@ def segui_account_suggeriti(page):
                     break
                 continue
 
-            # Prova a cliccare il primo bottone disponibile
             cliccato = False
             for bottone in bottoni:
                 try:
-                    # Chiudi popup prima di ogni click
                     chiudi_popup(page)
                     bottone.scroll_into_view_if_needed()
                     bottone.click(timeout=3000, force=True)
+                    page.wait_for_timeout(1000)  # dai tempo al cambio stato
+
                     seguiti += 1
                     tentativi_falliti = 0
                     print(f"Seguito account {seguiti}/{MAX_FOLLOW}")
                     cliccato = True
 
-                    # Dopo ogni follow, cerca subito nuovi account suggeriti
-                    # nella pagina (possono apparire altri suggeriti)
                     time.sleep(2)
 
-                    # Ogni 5 follow ricarica per avere nuovi suggerimenti
                     if seguiti % 5 == 0:
                         page.reload()
                         page.wait_for_timeout(4000)
 
-                    break  # Passa al prossimo ciclo del while
+                    break  # passa al prossimo ciclo while
 
                 except Exception as e:
                     print(f"Errore click bottone: {e}")
                     chiudi_popup(page)
-                    continue  # Prova il prossimo bottone nella lista
+                    continue
 
             if not cliccato:
                 tentativi_falliti += 1
                 print(f"Nessun bottone cliccabile trovato (tentativo {tentativi_falliti})")
-                # Scrolla per caricare nuovi account
                 page.keyboard.press("End")
                 time.sleep(2)
                 if tentativi_falliti >= max_tentativi_falliti:
@@ -134,11 +155,15 @@ def main():
         return
     try:
         with sync_playwright() as p:
+            # per debug puoi mettere headless=False e slow_mo=500
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
             )
-            # Carica i cookie di sessione
             ok = carica_cookies(context)
             if not ok:
                 browser.close()
