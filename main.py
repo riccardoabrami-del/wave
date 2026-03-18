@@ -10,6 +10,10 @@ SUGGERITI_URL = "https://www.instagram.com/explore/people/"
 COOKIES_JSON = os.getenv("INSTAGRAM_COOKIES")  # Cookie di sessione in formato JSON
 MAX_FOLLOW = 70  # Numero massimo di account da seguire per sessione
 
+# Colore del bottone "Segui" (blu)
+FOLLOW_BTN_COLOR_RGB = "rgb(74, 93, 249)"
+FOLLOW_BTN_COLOR_RGBA = "rgba(74, 93, 249, 1)"
+
 
 def carica_cookies(context):
     """Carica i cookie di sessione Instagram nel browser."""
@@ -43,54 +47,33 @@ def chiudi_popup(page):
 
 def trova_bottoni_segui(page):
     """
-    Trova i bottoni 'Segui' / 'Follow' in modo il più generico possibile.
-    1) Prova a prendere direttamente i bottoni con testo Segui/Follow.
-    2) Se non trova nulla, guarda card dei suggeriti e prende il bottone
-       nella card che ha testo Segui/Follow.
-    Restituisce una lista di locator dei bottoni da cliccare.
+    Restituisce una lista di locator per TUTTI i bottoni che hanno
+    come background il colore #4A5DF9, indipendentemente dal testo.
     """
-
     bottoni_da_cliccare = []
 
-    # 1) Direct: ruolo + testo (più robusto ai piccoli cambi HTML)
-    for label in ["Segui", "Follow"]:
-        btns = page.get_by_role("button", name=label)
-        if btns.count() > 0:
-            bottoni_da_cliccare.extend(btns.all())
+    all_buttons = page.locator("button")
+    count = all_buttons.count()
+    print(f"Bottoni totali trovati: {count}")
 
-    if bottoni_da_cliccare:
-        print(f"Trovati {len(bottoni_da_cliccare)} bottoni tramite get_by_role.")
-        return bottoni_da_cliccare
+    for i in range(count):
+        btn = all_buttons.nth(i)
+        try:
+            if not btn.is_visible():
+                continue
 
-    # 2) Per sicurezza: qualsiasi button che contiene il testo
-    for label in ["Segui", "Follow"]:
-        btns = page.locator(f"button:has-text('{label}')")
-        if btns.count() > 0:
-            bottoni_da_cliccare.extend(btns.all())
+            bg = btn.evaluate(
+                "el => window.getComputedStyle(el).getPropertyValue('background-color')"
+            )
 
-    if bottoni_da_cliccare:
-        print(f"Trovati {len(bottoni_da_cliccare)} bottoni tramite :has-text.")
-        return bottoni_da_cliccare
-
-    # 3) Fallback: lavoro per card dei suggeriti
-    cards = page.locator("article, div[role='presentation']").all()
-    print(f"Card suggeriti trovate: {len(cards)}")
-
-    for card in cards:
-        # dentro ogni card, cerca button o div[role='button']
-        buttons = card.locator("button, div[role='button']").all()
-        for btn in buttons:
-            try:
-                txt = (btn.inner_text() or "").strip().lower()
-            except Exception:
-                txt = ""
-
-            # clicca solo se il testo contiene segui/follow
-            if "segui" in txt or "follow" in txt:
+            if bg == FOLLOW_BTN_COLOR_RGB or bg == FOLLOW_BTN_COLOR_RGBA:
                 bottoni_da_cliccare.append(btn)
-                break  # passa alla prossima card
 
-    print(f"Bottoni Segui/Follow trovati nelle card: {len(bottoni_da_cliccare)}")
+        except Exception as e:
+            print(f"Errore leggendo colore bottone {i}: {e}")
+            continue
+
+    print(f"Bottoni con colore target trovati: {len(bottoni_da_cliccare)}")
     return bottoni_da_cliccare
 
 
@@ -108,17 +91,16 @@ def segui_account_suggeriti(page):
     print("Login confermato tramite cookie. Inizio follow...")
     seguiti = 0
     tentativi_falliti = 0
-    max_tentativi_falliti = 10  # Dopo 10 errori consecutivi ricarica la pagina
+    max_tentativi_falliti = 10  # Dopo 10 errori consecutivi ricarica/stop
 
     while seguiti < MAX_FOLLOW:
         try:
             chiudi_popup(page)
 
-            # Trova bottoni in modo robusto
             bottoni = trova_bottoni_segui(page)
 
             if not bottoni:
-                print("Nessun bottone Segui trovato. Ricarico la pagina...")
+                print("Nessun bottone con colore target trovato. Ricarico la pagina...")
                 page.goto(SUGGERITI_URL, timeout=60000)
                 page.wait_for_timeout(4000)
                 tentativi_falliti += 1
@@ -133,7 +115,7 @@ def segui_account_suggeriti(page):
                     chiudi_popup(page)
                     bottone.scroll_into_view_if_needed()
                     bottone.click(timeout=3000, force=True)
-                    page.wait_for_timeout(1000)  # dai tempo al cambio stato
+                    page.wait_for_timeout(1000)  # tempo per cambio stato
 
                     seguiti += 1
                     tentativi_falliti = 0
@@ -178,7 +160,7 @@ def main():
         return
     try:
         with sync_playwright() as p:
-            # per debug locale puoi mettere headless=False e slow_mo=500
+            # per debug puoi mettere headless=False e slow_mo=500
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 user_agent=(
