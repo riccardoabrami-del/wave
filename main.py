@@ -44,9 +44,9 @@ def chiudi_popup(page):
 def trova_bottoni_segui(page):
     """
     Restituisce una lista di locator per i bottoni 'Segui' / 'Follow'
-    usando la struttura HTML attuale del bottone.
+    usando le classi aggiornate del bottone.
     """
-    # Bottone: <button class="_aswp _aswr _aswu _asw_ _asx2"> ... <div>Segui</div> ... </button>
+    # bottone con classi specifiche + testo Segui
     locator_seg = page.locator(
         "button._aswp._aswr._aswu._asw_._asx2:has(div:has-text('Segui'))"
     )
@@ -64,21 +64,6 @@ def trova_bottoni_segui(page):
     if count_follow > 0:
         bottoni.extend(locator_follow.all())
 
-    # Fallback: se per qualche motivo le classi cambiano, prova solo col testo interno
-    if not bottoni:
-        fallback_seg = page.locator("button:has(div:has-text('Segui'))")
-        fallback_follow = page.locator("button:has(div:has-text('Follow'))")
-
-        c_fs = fallback_seg.count()
-        c_ff = fallback_follow.count()
-        print(f"Fallback bottoni Segui: {c_fs}, fallback Follow: {c_ff}")
-
-        if c_fs > 0:
-            bottoni.extend(fallback_seg.all())
-        if c_ff > 0:
-            bottoni.extend(fallback_follow.all())
-
-    print(f"Totale bottoni cliccabili trovati: {len(bottoni)}")
     return bottoni
 
 
@@ -143,50 +128,4 @@ def segui_account_suggeriti(page):
 
             if not cliccato:
                 tentativi_falliti += 1
-                print(f"Nessun bottone cliccabile trovato (tentativo {tentativi_falliti})")
-                page.keyboard.press("End")
-                time.sleep(2)
-                if tentativi_falliti >= max_tentativi_falliti:
-                    page.goto(SUGGERITI_URL, timeout=60000)
-                    page.wait_for_timeout(4000)
-                    tentativi_falliti = 0
-
-        except Exception as e:
-            print(f"Errore nel loop principale: {e}")
-            tentativi_falliti += 1
-            time.sleep(2)
-            continue
-
-    print(f"Operazione completata. Account seguiti oggi: {seguiti}")
-
-
-def main():
-    if not COOKIES_JSON:
-        print("Errore: INSTAGRAM_COOKIES non trovato. Aggiungi il secret su GitHub.")
-        return
-    try:
-        with sync_playwright() as p:
-            # per debug locale puoi mettere headless=False e slow_mo=500
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                )
-            )
-            ok = carica_cookies(context)
-            if not ok:
-                browser.close()
-                return
-            page = context.new_page()
-            segui_account_suggeriti(page)
-            browser.close()
-    except PWTimeoutError:
-        print("Timeout durante la navigazione.")
-    except Exception as e:
-        print(f"Errore imprevisto: {e}")
-
-
-if __name__ == "__main__":
-    main()
+                print(f"
