@@ -128,4 +128,51 @@ def segui_account_suggeriti(page):
 
             if not cliccato:
                 tentativi_falliti += 1
-                print(f"
+                print(f"Nessun bottone cliccabile trovato (tentativo {tentativi_falliti})")
+                page.keyboard.press("End")
+                time.sleep(2)
+                if tentativi_falliti >= max_tentativi_falliti:
+                    page.goto(SUGGERITI_URL, timeout=60000)
+                    page.wait_for_timeout(4000)
+                    tentativi_falliti = 0
+
+        except Exception as e:
+            print(f"Errore nel loop principale: {e}")
+            tentativi_falliti += 1
+            time.sleep(2)
+            continue
+
+    print(f"Operazione completata. Account seguiti oggi: {seguiti}")
+
+
+def main():
+    if not COOKIES_JSON:
+        print("Errore: INSTAGRAM_COOKIES non trovato. Aggiungi il secret su GitHub.")
+        return
+    try:
+        with sync_playwright() as p:
+            # per debug puoi mettere headless=False e slow_mo=500
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
+            )
+            ok = carica_cookies(context)
+            if not ok:
+                browser.close()
+                return
+            page = context.new_page()
+            segui_account_suggeriti(page)
+            browser.close()
+    except PWTimeoutError:
+        print("Timeout durante la navigazione.")
+    except Exception as e:
+        print(f"Errore imprevisto: {e}")
+
+
+if __name__ == "__main__":
+    main()
+
