@@ -1,3 +1,4 @@
+
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
 import os
 import json
@@ -44,27 +45,31 @@ def chiudi_popup(page):
 def trova_bottoni_segui(page):
     """
     Restituisce una lista di locator per i bottoni 'Segui' / 'Follow'
-    usando le classi aggiornate del bottone.
+    usando selettori robusti e un fallback generico.
     """
-    # bottone con classi specifiche + testo Segui
-    locator_seg = page.locator(
-        "button._aswp._aswr._aswu._asw_._asx2:has(div:has-text('Segui'))"
-    )
-    locator_follow = page.locator(
-        "button._aswp._aswr._aswu._asw_._asx2:has(div:has-text('Follow'))"
-    )
+    # Caso attuale: testo dentro un div interno
+    locator_seg = page.locator("button:has(div:has-text('Segui'))")
+    locator_follow = page.locator("button:has(div:has-text('Follow'))")
 
     count_seg = locator_seg.count()
     count_follow = locator_follow.count()
     print(f"Bottoni Segui: {count_seg}, Bottoni Follow: {count_follow}")
 
-    bottoni = []
     if count_seg > 0:
-        bottoni.extend(locator_seg.all())
+        return locator_seg.all()
     if count_follow > 0:
-        bottoni.extend(locator_follow.all())
+        return locator_follow.all()
 
-    return bottoni
+    # Fallback per quando il testo sparisce e resta solo l'icona:
+    # prendi i button nelle card utente dei suggeriti
+    fallback = page.locator("article button, div[role='button']")
+    count_fallback = fallback.count()
+    print(f"Bottoni fallback trovati: {count_fallback}")
+
+    if count_fallback > 0:
+        return fallback.all()
+
+    return []
 
 
 def segui_account_suggeriti(page):
@@ -175,4 +180,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
