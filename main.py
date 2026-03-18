@@ -1,4 +1,3 @@
-
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
 import os
 import json
@@ -45,31 +44,42 @@ def chiudi_popup(page):
 def trova_bottoni_segui(page):
     """
     Restituisce una lista di locator per i bottoni 'Segui' / 'Follow'
-    usando selettori robusti e un fallback generico.
+    usando più strategie di selezione in cascata.
     """
-    # Caso attuale: testo dentro un div interno
-    locator_seg = page.locator("button:has(div:has-text('Segui'))")
-    locator_follow = page.locator("button:has(div:has-text('Follow'))")
+    locators = []
 
-    count_seg = locator_seg.count()
-    count_follow = locator_follow.count()
-    print(f"Bottoni Segui: {count_seg}, Bottoni Follow: {count_follow}")
+    # 1) Ruolo + nome accessibile (testo visibile sul bottone)
+    for label in ["Segui", "Follow"]:
+        l = page.get_by_role("button", name=label)
+        if l.count() > 0:
+            locators.append(l)
 
-    if count_seg > 0:
-        return locator_seg.all()
-    if count_follow > 0:
-        return locator_follow.all()
+    # 2) Qualsiasi button che contiene il testo
+    for label in ["Segui", "Follow"]:
+        l = page.locator(f"button:has-text('{label}')")
+        if l.count() > 0:
+            locators.append(l)
 
-    # Fallback per quando il testo sparisce e resta solo l'icona:
-    # prendi i button nelle card utente dei suggeriti
+    # 3) Fallback: bottoni generici dentro le card dei suggeriti
     fallback = page.locator("article button, div[role='button']")
-    count_fallback = fallback.count()
-    print(f"Bottoni fallback trovati: {count_fallback}")
+    if fallback.count() > 0:
+        locators.append(fallback)
 
-    if count_fallback > 0:
-        return fallback.all()
+    # Unisci tutti i locator in una sola lista di elementi unici
+    elementi = []
+    visti = set()
+    for loc in locators:
+        for el in loc.all():
+            try:
+                handle = el.element_handle()
+                if handle and handle not in visti:
+                    visti.add(handle)
+                    elementi.append(el)
+            except Exception:
+                continue
 
-    return []
+    print(f"Totale bottoni candidati: {len(elementi)}")
+    return elementi
 
 
 def segui_account_suggeriti(page):
@@ -92,7 +102,6 @@ def segui_account_suggeriti(page):
         try:
             chiudi_popup(page)
 
-            # Trova bottoni in modo robusto
             bottoni = trova_bottoni_segui(page)
 
             if not bottoni:
@@ -109,17 +118,29 @@ def segui_account_suggeriti(page):
             for bottone in bottoni:
                 try:
                     chiudi_popup(page)
+
+                    # Filtra: se ha testo e non contiene segui/follow, salta
+                    try:
+                        txt = bottone.inner_text().strip().lower()
+                    except Exception:
+                        txt = ""
+
+                    if txt and all(k not in txt for k in ["segui", "follow"]):
+                        continue
+
                     bottone.scroll_into_view_if_needed()
                     bottone.click(timeout=3000, force=True)
-                    page.wait_for_timeout(1000)  # dai tempo al cambio stato
+                    page.wait_for_timeout(1000)  # tempo per cambio stato
 
                     seguiti += 1
                     tentativi_falliti = 0
                     print(f"Seguito account {seguiti}/{MAX_FOLLOW}")
                     cliccato = True
 
+                    # pausa “umana”
                     time.sleep(2)
 
+                    # ogni 5 follow ricarica per cambiare un po’ la pagina
                     if seguiti % 5 == 0:
                         page.reload()
                         page.wait_for_timeout(4000)
