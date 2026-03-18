@@ -43,40 +43,47 @@ def chiudi_popup(page):
 
 def trova_bottoni_segui(page):
     """
-    DEBUG: stampa testo e background-color dei primi bottoni trovati.
-    Per ora NON clicca nulla, solo logga i dati che ci servono.
+    Restituisce una lista di locator per i bottoni 'Segui' / 'Follow'
+    usando la struttura HTML attuale del bottone.
     """
-    bottoni_da_cliccare = []
+    # Bottone: <button class="_aswp _aswr _aswu _asw_ _asx2"> ... <div>Segui</div> ... </button>
+    locator_seg = page.locator(
+        "button._aswp._aswr._aswu._asw_._asx2:has(div:has-text('Segui'))"
+    )
+    locator_follow = page.locator(
+        "button._aswp._aswr._aswu._asw_._asx2:has(div:has-text('Follow'))"
+    )
 
-    all_buttons = page.locator("button")
-    count = all_buttons.count()
-    print(f"Bottoni totali trovati: {count}")
+    count_seg = locator_seg.count()
+    count_follow = locator_follow.count()
+    print(f"Bottoni Segui: {count_seg}, Bottoni Follow: {count_follow}")
 
-    for i in range(count):
-        btn = all_buttons.nth(i)
-        try:
-            if not btn.is_visible():
-                continue
+    bottoni = []
+    if count_seg > 0:
+        bottoni.extend(locator_seg.all())
+    if count_follow > 0:
+        bottoni.extend(locator_follow.all())
 
-            bg = btn.evaluate(
-                "el => window.getComputedStyle(el).getPropertyValue('background-color')"
-            )
-            txt = (btn.inner_text() or "").strip()
+    # Fallback: se per qualche motivo le classi cambiano, prova solo col testo interno
+    if not bottoni:
+        fallback_seg = page.locator("button:has(div:has-text('Segui'))")
+        fallback_follow = page.locator("button:has(div:has-text('Follow'))")
 
-            # per debug: primi 15 bottoni
-            if i < 15:
-                print(f"Bottone {i}: text='{txt}', background-color='{bg}'")
+        c_fs = fallback_seg.count()
+        c_ff = fallback_follow.count()
+        print(f"Fallback bottoni Segui: {c_fs}, fallback Follow: {c_ff}")
 
-        except Exception as e:
-            print(f"Errore leggendo colore bottone {i}: {e}")
-            continue
+        if c_fs > 0:
+            bottoni.extend(fallback_seg.all())
+        if c_ff > 0:
+            bottoni.extend(fallback_follow.all())
 
-    # per ora NON clicchiamo niente
-    return []
+    print(f"Totale bottoni cliccabili trovati: {len(bottoni)}")
+    return bottoni
 
 
 def segui_account_suggeriti(page):
-    """Naviga sulla pagina dei suggeriti e (più avanti) seguirà gli account."""
+    """Naviga sulla pagina dei suggeriti e segue gli account."""
     print("Navigo sulla pagina degli account suggeriti...")
     page.goto(SUGGERITI_URL, timeout=60000)
     page.wait_for_timeout(5000)
@@ -86,30 +93,71 @@ def segui_account_suggeriti(page):
         print("Errore: non loggato. I cookie potrebbero essere scaduti.")
         return
 
-    print("Login confermato tramite cookie. Inizio follow (fase di debug)...")
+    print("Login confermato tramite cookie. Inizio follow...")
     seguiti = 0
     tentativi_falliti = 0
-    max_tentativi_falliti = 3  # pochi tentativi, ci basta vedere i log
+    max_tentativi_falliti = 10  # Dopo 10 errori consecutivi ricarica la pagina
 
     while seguiti < MAX_FOLLOW:
         try:
             chiudi_popup(page)
 
+            # Trova bottoni in modo robusto
             bottoni = trova_bottoni_segui(page)
 
-            # In debug, ci basta un giro di log e poi usciamo
-            print("Fase debug completata, esco dal loop.")
-            break
+            if not bottoni:
+                print("Nessun bottone Segui trovato. Ricarico la pagina...")
+                page.goto(SUGGERITI_URL, timeout=60000)
+                page.wait_for_timeout(4000)
+                tentativi_falliti += 1
+                if tentativi_falliti >= max_tentativi_falliti:
+                    print("Troppi tentativi falliti. Uscita.")
+                    break
+                continue
+
+            cliccato = False
+            for bottone in bottoni:
+                try:
+                    chiudi_popup(page)
+                    bottone.scroll_into_view_if_needed()
+                    bottone.click(timeout=3000, force=True)
+                    page.wait_for_timeout(1000)  # dai tempo al cambio stato
+
+                    seguiti += 1
+                    tentativi_falliti = 0
+                    print(f"Seguito account {seguiti}/{MAX_FOLLOW}")
+                    cliccato = True
+
+                    time.sleep(2)
+
+                    if seguiti % 5 == 0:
+                        page.reload()
+                        page.wait_for_timeout(4000)
+
+                    break  # passa al prossimo ciclo while
+
+                except Exception as e:
+                    print(f"Errore click bottone: {e}")
+                    chiudi_popup(page)
+                    continue
+
+            if not cliccato:
+                tentativi_falliti += 1
+                print(f"Nessun bottone cliccabile trovato (tentativo {tentativi_falliti})")
+                page.keyboard.press("End")
+                time.sleep(2)
+                if tentativi_falliti >= max_tentativi_falliti:
+                    page.goto(SUGGERITI_URL, timeout=60000)
+                    page.wait_for_timeout(4000)
+                    tentativi_falliti = 0
 
         except Exception as e:
             print(f"Errore nel loop principale: {e}")
             tentativi_falliti += 1
             time.sleep(2)
-            if tentativi_falliti >= max_tentativi_falliti:
-                break
             continue
 
-    print(f"Operazione (debug) completata. Account seguiti oggi: {seguiti}")
+    print(f"Operazione completata. Account seguiti oggi: {seguiti}")
 
 
 def main():
@@ -118,7 +166,7 @@ def main():
         return
     try:
         with sync_playwright() as p:
-            # per debug puoi mettere headless=False e slow_mo=500
+            # per debug locale puoi mettere headless=False e slow_mo=500
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 user_agent=(
