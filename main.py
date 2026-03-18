@@ -61,6 +61,7 @@ def trova_bottoni_segui(page):
             locators.append(l)
 
     # 3) Fallback: bottoni generici dentro le card dei suggeriti
+    #    (per ora lo teniamo, ma vediamo in debug cosa becca)
     fallback = page.locator("article button, div[role='button']")
     if fallback.count() > 0:
         locators.append(fallback)
@@ -79,6 +80,15 @@ def trova_bottoni_segui(page):
                 continue
 
     print(f"Totale bottoni candidati: {len(elementi)}")
+
+    # DEBUG: stampa il testo dei bottoni candidati
+    for i, el in enumerate(elementi, start=1):
+        try:
+            txt = el.inner_text().strip()
+        except Exception:
+            txt = "<errore inner_text>"
+        print(f"[DEBUG] Bottone candidato {i}: '{txt}'")
+
     return elementi
 
 
@@ -125,7 +135,10 @@ def segui_account_suggeriti(page):
                     except Exception:
                         txt = ""
 
+                    print(f"[DEBUG] Provo a cliccare bottone con testo: '{txt}'")
+
                     if txt and all(k not in txt for k in ["segui", "follow"]):
+                        print("[DEBUG] Skippato perché non è un bottone Segui/Follow.")
                         continue
 
                     bottone.scroll_into_view_if_needed()
@@ -177,8 +190,8 @@ def main():
         return
     try:
         with sync_playwright() as p:
-            # per debug puoi mettere headless=False e slow_mo=500
-            browser = p.chromium.launch(headless=True)
+            # DEBUG: browser visibile + azioni rallentate
+            browser = p.chromium.launch(headless=False, slow_mo=500)
             context = browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
