@@ -43,53 +43,55 @@ def chiudi_popup(page):
 
 def trova_bottoni_segui(page):
     """
-    Restituisce una lista di locator per i bottoni 'Segui' / 'Follow'
-    usando più strategie di selezione in cascata.
+    Trova i bottoni 'Segui' / 'Follow' in modo il più generico possibile.
+    1) Prova a prendere direttamente i bottoni con testo Segui/Follow.
+    2) Se non trova nulla, guarda card dei suggeriti e prende il bottone
+       nella card che ha testo Segui/Follow.
+    Restituisce una lista di locator dei bottoni da cliccare.
     """
-    locators = []
 
-    # 1) Ruolo + nome accessibile (testo visibile sul bottone)
+    bottoni_da_cliccare = []
+
+    # 1) Direct: ruolo + testo (più robusto ai piccoli cambi HTML)
     for label in ["Segui", "Follow"]:
-        l = page.get_by_role("button", name=label)
-        if l.count() > 0:
-            locators.append(l)
+        btns = page.get_by_role("button", name=label)
+        if btns.count() > 0:
+            bottoni_da_cliccare.extend(btns.all())
 
-    # 2) Qualsiasi button che contiene il testo
+    if bottoni_da_cliccare:
+        print(f"Trovati {len(bottoni_da_cliccare)} bottoni tramite get_by_role.")
+        return bottoni_da_cliccare
+
+    # 2) Per sicurezza: qualsiasi button che contiene il testo
     for label in ["Segui", "Follow"]:
-        l = page.locator(f"button:has-text('{label}')")
-        if l.count() > 0:
-            locators.append(l)
+        btns = page.locator(f"button:has-text('{label}')")
+        if btns.count() > 0:
+            bottoni_da_cliccare.extend(btns.all())
 
-    # 3) Fallback: bottoni generici dentro le card dei suggeriti
-    #    (per ora lo teniamo, ma vediamo in debug cosa becca)
-    fallback = page.locator("article button, div[role='button']")
-    if fallback.count() > 0:
-        locators.append(fallback)
+    if bottoni_da_cliccare:
+        print(f"Trovati {len(bottoni_da_cliccare)} bottoni tramite :has-text.")
+        return bottoni_da_cliccare
 
-    # Unisci tutti i locator in una sola lista di elementi unici
-    elementi = []
-    visti = set()
-    for loc in locators:
-        for el in loc.all():
+    # 3) Fallback: lavoro per card dei suggeriti
+    cards = page.locator("article, div[role='presentation']").all()
+    print(f"Card suggeriti trovate: {len(cards)}")
+
+    for card in cards:
+        # dentro ogni card, cerca button o div[role='button']
+        buttons = card.locator("button, div[role='button']").all()
+        for btn in buttons:
             try:
-                handle = el.element_handle()
-                if handle and handle not in visti:
-                    visti.add(handle)
-                    elementi.append(el)
+                txt = (btn.inner_text() or "").strip().lower()
             except Exception:
-                continue
+                txt = ""
 
-    print(f"Totale bottoni candidati: {len(elementi)}")
+            # clicca solo se il testo contiene segui/follow
+            if "segui" in txt or "follow" in txt:
+                bottoni_da_cliccare.append(btn)
+                break  # passa alla prossima card
 
-    # DEBUG: stampa il testo dei bottoni candidati
-    for i, el in enumerate(elementi, start=1):
-        try:
-            txt = el.inner_text().strip()
-        except Exception:
-            txt = "<errore inner_text>"
-        print(f"[DEBUG] Bottone candidato {i}: '{txt}'")
-
-    return elementi
+    print(f"Bottoni Segui/Follow trovati nelle card: {len(bottoni_da_cliccare)}")
+    return bottoni_da_cliccare
 
 
 def segui_account_suggeriti(page):
@@ -112,6 +114,7 @@ def segui_account_suggeriti(page):
         try:
             chiudi_popup(page)
 
+            # Trova bottoni in modo robusto
             bottoni = trova_bottoni_segui(page)
 
             if not bottoni:
@@ -128,32 +131,17 @@ def segui_account_suggeriti(page):
             for bottone in bottoni:
                 try:
                     chiudi_popup(page)
-
-                    # Filtra: se ha testo e non contiene segui/follow, salta
-                    try:
-                        txt = bottone.inner_text().strip().lower()
-                    except Exception:
-                        txt = ""
-
-                    print(f"[DEBUG] Provo a cliccare bottone con testo: '{txt}'")
-
-                    if txt and all(k not in txt for k in ["segui", "follow"]):
-                        print("[DEBUG] Skippato perché non è un bottone Segui/Follow.")
-                        continue
-
                     bottone.scroll_into_view_if_needed()
                     bottone.click(timeout=3000, force=True)
-                    page.wait_for_timeout(1000)  # tempo per cambio stato
+                    page.wait_for_timeout(1000)  # dai tempo al cambio stato
 
                     seguiti += 1
                     tentativi_falliti = 0
                     print(f"Seguito account {seguiti}/{MAX_FOLLOW}")
                     cliccato = True
 
-                    # pausa “umana”
                     time.sleep(2)
 
-                    # ogni 5 follow ricarica per cambiare un po’ la pagina
                     if seguiti % 5 == 0:
                         page.reload()
                         page.wait_for_timeout(4000)
@@ -190,8 +178,8 @@ def main():
         return
     try:
         with sync_playwright() as p:
-            # DEBUG: browser visibile + azioni rallentate
-            browser = p.chromium.launch(headless=False, slow_mo=500)
+            # per debug locale puoi mettere headless=False e slow_mo=500
+            browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
