@@ -1,4 +1,3 @@
-
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
 import os
 import json
@@ -45,31 +44,36 @@ def chiudi_popup(page):
 def trova_bottoni_segui(page):
     """
     Restituisce una lista di locator per i bottoni 'Segui' / 'Follow'
-    usando selettori robusti e un fallback generico.
+    usando il selettore CSS completo del bottone.
     """
-    # Caso attuale: testo dentro un div interno
-    locator_seg = page.locator("button:has(div:has-text('Segui'))")
-    locator_follow = page.locator("button:has(div:has-text('Follow'))")
+    selector = (
+        "#mount_0_0_T8 > div > div > div.x9f619.x1n2onr6.x1ja2u2z > div > div > "
+        "div.x78zum5.xdt5ytf.x1t2pt76.x1n2onr6.x1ja2u2z.x10cihs4 > "
+        "div.html-div.xdj266r.x14z9mp.xat24cr.x1lziwak.xexx8yu.xyri2b.x18d9i69."
+        "x1c1uobl.x9f619.x16ye13r.xvbhtw8.x78zum5.x15mokao.x1ga7v0g.x16uus16."
+        "xbiv7yw.x1uhb9sk.x1plvlek.xryxfnj.x1c4vz4f.x2lah0s.x1q0g3np.xqjyukv."
+        "x1qjc9v5.x1oa3qoh.x1qughib > div.x10o80wk.x14k21rp.xh8yej3 > section > "
+        "main > div > div.html-div.xdj266r.x14z9mp.xat24cr.x1lziwak.xyri2b."
+        "x1c1uobl.x9f619.xjbqb8w.x78zum5.x15mokao.x1ga7v0g.x16uus16.xbiv7yw."
+        "xwib8y2.x1y1aw1k.x1uhb9sk.x1plvlek.xryxfnj.x1c4vz4f.x2lah0s.xdt5ytf."
+        "xqjyukv.x1qjc9v5.x1oa3qoh.x1nhvcw1 > div > div > div:nth-child(2) > "
+        "div > div > div > div:nth-child(3) > div > button"
+    )
+
+    locator_seg = page.locator(f"{selector}:has-text('Segui')")
+    locator_follow = page.locator(f"{selector}:has-text('Follow')")
 
     count_seg = locator_seg.count()
     count_follow = locator_follow.count()
     print(f"Bottoni Segui: {count_seg}, Bottoni Follow: {count_follow}")
 
+    bottoni = []
     if count_seg > 0:
-        return locator_seg.all()
+        bottoni.extend(locator_seg.all())
     if count_follow > 0:
-        return locator_follow.all()
+        bottoni.extend(locator_follow.all())
 
-    # Fallback per quando il testo sparisce e resta solo l'icona:
-    # prendi i button nelle card utente dei suggeriti
-    fallback = page.locator("article button, div[role='button']")
-    count_fallback = fallback.count()
-    print(f"Bottoni fallback trovati: {count_fallback}")
-
-    if count_fallback > 0:
-        return fallback.all()
-
-    return []
+    return bottoni
 
 
 def segui_account_suggeriti(page):
